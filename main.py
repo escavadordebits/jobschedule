@@ -78,6 +78,8 @@ def job1():
         except Exception as e:
             print("Error", e)
 
+# busca os esbocos de notas fiscais de saida no sap
+
 
 def job2():
     print("Pesquisando Rescunhos")
@@ -99,28 +101,125 @@ def job2():
     if response.status_code == 200:
         data = json.loads(response.content.decode('utf-8'))
 
+        for rows in data['value']:
+            sDocEntry = rows["DocEntry"]
+            sDocNum = rows["DocNum"]
+            sCardCode = rows["CardCode"]
+            sCardName = rows["CardName"]
+            sDocTotal = rows["DocTotal"]
+            sDocObjectCode = rows["DocObjectCode"]
+            sDocumentStatus = 'bost_Open'
+            sU_DwnPmtAuto = rows["U_DwnPmtAuto"]
+            Status = 'N'
+
+            conn = sqlite3.connect('Adtos.db')
+            queryselect = f"Select Docentry from DRAFTS WHERE DocEntry = {sDocEntry}"
+            cursor = conn.execute(queryselect)
+            if (cursor.rowcount == -1):
+                query = f"INSERT INTO DRAFTS (DocEntry,DocNum,CardCode, CardName,DocTotal,DocObjectCode,DocumentStatus,U_DwnPmtAuto,Status) values ('{sDocEntry}','{sDocNum}','{sCardCode}','{sCardName}','{sDocTotal}','{sDocObjectCode}','{sDocumentStatus}','{sU_DwnPmtAuto}','{Status}');"
+                conn.execute(query)
+                conn.commit()
+            print("Tabela Criada Com Sucesso")
+
         print(data)
+
+# busca os  adtos de clientes no SAP
 
 
 def job3():
     print("Terceciro job 21 segundos")
 
+    sPesquisa = f"Select SessionID FROM COMPANY"
+    conn = sqlite3.connect('Adtos.db')
+    cursor = conn.execute(sPesquisa)
+    for row in cursor:
+        token = row[0]
+
+    stoken = f"B1SESSION={token}"
     headers = {
-        "accept": "application/json",
-        "content-type": "application/json"
+        "sessionid": token,
+        "Cookie": stoken
     }
 
-    url = f"http://192.1.2.7:50001/b1s/v1/http://192.1.2.7:50001/b1s/v1/DownPayments"
+    url = f"http://192.1.2.7:50001/b1s/v1/DownPayments?$select=DocEntry,CardCode,CardName,DocNum,DocObjectCode,DocTotal,DocumentStatus,U_DwnPmtAuto&$filter=U_DwnPmtAuto eq 'S' and DocumentStatus eq 'bost_Close'"
 
     response = requests.get(url, headers=headers, verify=False)
-    if response.status_code == 201:
-        return make_response(201)
+    if response.status_code == 200:
+        data = json.loads(response.content.decode('utf-8'))
+
+        for rows in data['value']:
+            sDocEntry = rows["DocEntry"]
+            sDocNum = rows["DocNum"]
+            sCardCode = rows["CardCode"]
+            sCardName = rows["CardName"]
+            sDocTotal = rows["DocTotal"]
+            sDocObjectCode = rows["DocObjectCode"]
+            sDocumentStatus = 'bost_Open'
+            sU_DwnPmtAuto = rows["U_DwnPmtAuto"]
+            Status = 'N'
+
+            conn = sqlite3.connect('Adtos.db')
+            queryselect = f"Select Docentry from INVOICES WHERE DocEntry = {sDocEntry}"
+            cursor = conn.execute(queryselect)
+            Linhas = cursor.fetchall()
+            if (cursor.fetchall() == 0):
+                query = f"INSERT INTO INVOICES (DocEntry,DocNum,CardCode, CardName,DocTotal,DocObjectCode,DocumentStatus,U_DwnPmtAuto,Status) values ('{sDocEntry}','{sDocNum}','{sCardCode}','{sCardName}','{sDocTotal}','{sDocObjectCode}','{sDocumentStatus}','{sU_DwnPmtAuto}','{Status}');"
+                conn.execute(query)
+                conn.commit()
+            print("Tabela Criada Com Sucesso")
+
+# Post da INvoice atualizando o valor a ser sacado total de adto
 
 
-schedule.every(10).seconds.do(job1)
-schedule.every(20).seconds.do(job2)
-# schedule.every(30).seconds.do(job3)
+def job4():
+    print("Quarto job 21 segundos")
+
+    sPesquisa = f"Select SessionID FROM COMPANY"
+    conn = sqlite3.connect('Adtos.db')
+    cursor = conn.execute(sPesquisa)
+    for row in cursor:
+        token = row[0]
+
+    stoken = f"B1SESSION={token}"
+    headers = {
+        "sessionid": token,
+        "Cookie": stoken
+    }
+
+    url = f"http://192.1.2.7:50001/b1s/v1/DownPayments?$select=DocEntry,CardCode,CardName,DocNum,DocObjectCode,DocTotal,DocumentStatus,U_DwnPmtAuto&$filter=U_DwnPmtAuto eq 'S' and DocumentStatus eq 'bost_Close'"
+
+    response = requests.get(url, headers=headers, verify=False)
+    if response.status_code == 200:
+        data = json.loads(response.content.decode('utf-8'))
+
+        for rows in data['value']:
+            sDocEntry = rows["DocEntry"]
+            sDocNum = rows["DocNum"]
+            sCardCode = rows["CardCode"]
+            sCardName = rows["CardName"]
+            sDocTotal = rows["DocTotal"]
+            sDocObjectCode = rows["DocObjectCode"]
+            sDocumentStatus = 'bost_Open'
+            sU_DwnPmtAuto = rows["U_DwnPmtAuto"]
+            Status = 'N'
+
+            conn = sqlite3.connect('Adtos.db')
+            queryselect = f"Select Docentry from INVOICES WHERE DocEntry = {sDocEntry}"
+            cursor = conn.execute(queryselect)
+            Linhas = cursor.fetchall()
+            if (cursor.fetchall() == 0):
+                query = f"INSERT INTO INVOICES (DocEntry,DocNum,CardCode, CardName,DocTotal,DocObjectCode,DocumentStatus,U_DwnPmtAuto,Status) values ('{sDocEntry}','{sDocNum}','{sCardCode}','{sCardName}','{sDocTotal}','{sDocObjectCode}','{sDocumentStatus}','{sU_DwnPmtAuto}','{Status}');"
+                conn.execute(query)
+                conn.commit()
+            print("Tabela Criada Com Sucesso")
+
+
+schedule.every(30).seconds.do(job1)
+schedule.every(40).seconds.do(job2)
+schedule.every(50).seconds.do(job3)
+schedule.every(60).seconds.do(job4)
+
 
 while True:
     schedule.run_pending()
-    time.sleep(5)
+    time.sleep(3)
