@@ -7,10 +7,13 @@ from pip._vendor import requests
 import sqlite3
 import json
 
+with open('dadosacesso.json') as f:
+    data = json.load(f)
 
-sCompanyDB = "SBO_DESENV_EVO"
-sPassword = "Evo@09"
-sUserName = "manager"
+sCompanyDB = data["CompanyDB"]
+sPassword = data["Password"]
+sUserName = data["UserName"]
+UrlSAP = data["Url"]
 
 
 try:
@@ -49,16 +52,16 @@ def job1():
     print("Conectando na base")
 
     payload = {
-        "CompanyDB": sCompanyDB,
-        "Password": sPassword,
-        "UserName": sUserName
+        "CompanyDB": f"{sCompanyDB}",
+        "Password": f"{sPassword}",
+        "UserName": f"{sUserName}"
     }
     headers = {
         "accept": "application/json",
         "content-type": "application/json"
     }
 
-    url = f"http://192.1.2.7:50001/b1s/v1/Login"
+    url = f"{UrlSAP}/Login"
 
     response = requests.post(url, json=payload, headers=headers, verify=False)
     if response.status_code == 200:
@@ -95,7 +98,7 @@ def job2():
         "Cookie": stoken
     }
 
-    url = f"http://192.1.2.7:50001/b1s/v1/Drafts?$select=DocEntry,CardCode,CardName,DocNum,DocObjectCode,DocTotal,DocumentStatus,U_DwnPmtAuto&$filter=DocObjectCode eq 'oInvoices' and DocumentStatus eq 'bost_Open'"
+    url = f"{UrlSAP}/Drafts?$select=DocEntry,CardCode,CardName,DocNum,DocObjectCode,DocTotal,DocumentStatus,U_DwnPmtAuto&$filter=DocObjectCode eq 'oInvoices' and DocumentStatus eq 'bost_Open'"
 
     response = requests.get(url, headers=headers, verify=False)
     if response.status_code == 200:
@@ -125,7 +128,6 @@ def job2():
 
 # busca os  adtos de clientes no SAP
 
-
 def job3():
     print("Terceciro job 21 segundos")
 
@@ -141,7 +143,7 @@ def job3():
         "Cookie": stoken
     }
 
-    url = f"http://192.1.2.7:50001/b1s/v1/DownPayments?$select=DocEntry,CardCode,CardName,DocNum,DocObjectCode,DocTotal,DocumentStatus,U_DwnPmtAuto&$filter=U_DwnPmtAuto eq 'S' and DocumentStatus eq 'bost_Close'"
+    url = f"{UrlSAP}/DownPayments?$select=DocEntry,CardCode,CardName,DocNum,DocObjectCode,DocTotal,DocumentStatus,U_DwnPmtAuto&$filter=U_DwnPmtAuto eq 'S' and DocumentStatus eq 'bost_Close'"
 
     response = requests.get(url, headers=headers, verify=False)
     if response.status_code == 200:
@@ -173,10 +175,14 @@ def job3():
 
 def job4():
     print("Quarto job 21 segundos")
+    ListaAdto = list()
+    pesquisa = f"select  T0.DocEntry DocAdto,T0.DocTotal,T1.DocEntry DocNota from DRAFTS T1\
+            inner join INVOICES T0 on T0.CardCode=T1.CardCode\
+            WHERE t1.DocTotal = t0.DocTotal and t1.U_DwnPmtAuto = 'S' and T0.Status = 'N'"
 
-    sPesquisa = f"Select SessionID FROM COMPANY"
+    pToken = f"Select SessionID FROM COMPANY"
     conn = sqlite3.connect('Adtos.db')
-    cursor = conn.execute(sPesquisa)
+    cursor = conn.execute(pToken)
     for row in cursor:
         token = row[0]
 
@@ -185,39 +191,68 @@ def job4():
         "sessionid": token,
         "Cookie": stoken
     }
+    cursor2 = conn.execute(pesquisa)
+    Adtos = cursor2.fetchall()
+    for ListaAdtos in Adtos:
+        ListaAdto.append(
+            {
+                "DocNota": ListaAdtos[2],
+                "DocAdto": ListaAdtos[0],
+                "TotalNota": ListaAdtos[1]
+            }
+        )
 
-    url = f"http://192.1.2.7:50001/b1s/v1/DownPayments?$select=DocEntry,CardCode,CardName,DocNum,DocObjectCode,DocTotal,DocumentStatus,U_DwnPmtAuto&$filter=U_DwnPmtAuto eq 'S' and DocumentStatus eq 'bost_Close'"
+    for i in ListaAdto:
+        NumDraft = i["DocNota"]
+        NumAdto = i["DocAdto"]
+        DocTotal = i["TotalNota"]
+        url = f"{UrlSAP}/Drafts({NumDraft})"
+        payload = {
+            "DocEntry": f"{NumDraft}",
+            "DownPaymentsToDraw": [
+                {
+                    "DocEntry": f"{NumAdto}",
+                    "AmountToDraw": f"{DocTotal}",
+                    "AmountToDrawSC": f"{DocTotal}"
 
-    response = requests.get(url, headers=headers, verify=False)
-    if response.status_code == 200:
-        data = json.loads(response.content.decode('utf-8'))
+                }
+            ],
+            "DiscountPercent": 0.0
+        }
 
-        for rows in data['value']:
-            sDocEntry = rows["DocEntry"]
-            sDocNum = rows["DocNum"]
-            sCardCode = rows["CardCode"]
-            sCardName = rows["CardName"]
-            sDocTotal = rows["DocTotal"]
-            sDocObjectCode = rows["DocObjectCode"]
-            sDocumentStatus = 'bost_Open'
-            sU_DwnPmtAuto = rows["U_DwnPmtAuto"]
-            Status = 'N'
+        response = requests.patch(
+            url, headers=headers, data=json.dumps(payload), verify=False)
+        if response.status_code == 204:
 
-            conn = sqlite3.connect('Adtos.db')
-            queryselect = f"Select Docentry from INVOICES WHERE DocEntry = {sDocEntry}"
-            cursor = conn.execute(queryselect)
-            Linhas = cursor.fetchall()
-            if (cursor.fetchall() == 0):
-                query = f"INSERT INTO INVOICES (DocEntry,DocNum,CardCode, CardName,DocTotal,DocObjectCode,DocumentStatus,U_DwnPmtAuto,Status) values ('{sDocEntry}','{sDocNum}','{sCardCode}','{sCardName}','{sDocTotal}','{sDocObjectCode}','{sDocumentStatus}','{sU_DwnPmtAuto}','{Status}');"
-                conn.execute(query)
-                conn.commit()
-            print("Tabela Criada Com Sucesso")
+            payload2 = {
+                "DocEntry": f"{NumDraft}",
+                "DiscountPercent": 0.0
+            }
+            response = requests.patch(
+                url, headers=headers, data=json.dumps(payload2), verify=False)
+            atualizadesc = f"update INVOICES SET STATUS = 'S' where DocEntry = '{NumAdto}'"
+            cursor2 = conn.execute(atualizadesc)
+            cursor2.connection.commit()
+
+            url = f"h{url}/DraftsService_SaveDraftToDocument"
+
+            payload3 = {
+                "Document": {
+
+                    "DocEntry": f"{NumDraft}"
+                }
+
+            }
+            response = requests.patch(
+                url, headers=headers, data=json.dumps(payload3), verify=False)
+
+            print("Nota Vinculada ao Adto  Com Sucesso")
 
 
-schedule.every(30).seconds.do(job1)
-schedule.every(40).seconds.do(job2)
-schedule.every(50).seconds.do(job3)
-schedule.every(60).seconds.do(job4)
+schedule.every(10).seconds.do(job1)
+# schedule.every(40).seconds.do(job2)
+# schedule.every(50).seconds.do(job3)
+schedule.every(15).seconds.do(job4)
 
 
 while True:
